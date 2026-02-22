@@ -1,0 +1,146 @@
+model {
+  buyer = actor 'Покупатель' {
+    description 'Смотрит ленту и товары, оформляет заказ'
+  }
+  seller = actor 'Продавец' {
+    description 'Управляет каталогом и заказами'
+  }
+
+  paymentProvider = external 'Payment Provider' {
+    description 'Внешний платежный провайдер'
+  }
+  msgProvider = external 'Email/SMS/Push Provider' {
+    description 'Внешний провайдер каналов уведомлений'
+  }
+
+  marketplace = system 'Marketplace' {
+    description 'Маркетплейс: каталог, лента, заказы, платежи, уведомления и рекомендации'
+
+    web = container 'Web/Mobile App' {
+      technology 'Web / Native'
+      description 'Клиентский интерфейс для покупателей и продавцов'
+      style { shape browser }
+    }
+
+    gateway = container 'API Gateway / BFF' {
+      technology 'C++ (userver) + gRPC'
+      description 'Единая точка входа, маршрутизация и агрегация API'
+    }
+
+    users = container 'User Service' {
+      technology 'C++ (userver) + gRPC'
+      description 'Профили и роли пользователей'
+    }
+    usersDb = database 'User DB' {
+      technology 'PostgreSQL'
+      description 'Users, Roles'
+    }
+
+    catalog = container 'Catalog Service' {
+      technology 'C++ (userver) + gRPC'
+      description 'Управление товарами, категориями и атрибутами'
+    }
+    catalogDb = database 'Catalog DB' {
+      technology 'PostgreSQL'
+      description 'Products, Categories, Attributes'
+    }
+    feed = container 'Feed Service' {
+      technology 'C++ (userver) + gRPC'
+      description 'Сервис ленты без собственной базы, получает рекомендации из Recommender'
+    }
+
+    recommender = container 'Recommendation Service' {
+      technology 'Python + gRPC + STQ Workers + PyTorch/TensorFlow'
+      description 'Сервис рекомендаций: API выдачи + ML-воркеры для обновления моделей'
+    }
+    recommenderDb = database 'Recommendation DB' {
+      technology 'PostgreSQL/ClickHouse'
+      description 'Features, candidates, rankings, profiles'
+    }
+
+    orders = container 'Order Service' {
+      technology 'C++ (userver) + gRPC'
+      description 'Оформление заказов и управление статусами'
+    }
+    ordersDb = database 'Order DB' {
+      technology 'PostgreSQL'
+      description 'Orders, Items, StatusHistory'
+    }
+    ordersAnalyticsDb = database 'Order Analytics DB' {
+      technology 'ClickHouse'
+      description 'OrderLogs for analytics'
+    }
+
+    payments = container 'Payment Service' {
+      technology 'C++ (userver) + gRPC'
+      description 'Платежи, идемпотентность, интеграция с провайдером'
+    }
+    paymentsDb = database 'Payment DB' {
+      technology 'PostgreSQL'
+      description 'Payments'
+    }
+
+    notifications = container 'Notification Service' {
+      technology 'C++ (userver) + gRPC'
+      description 'Отправка email/SMS/push и хранение истории доставки'
+    }
+    notificationsDb = database 'Notification DB' {
+      technology 'PostgreSQL'
+      description 'Templates, DeliveryLogs'
+    }
+
+    config = container 'Dynamic Config Service' {
+      technology 'C++ (userver) + gRPC'
+      description 'Единый сервис динамических конфигов и feature flags'
+    }
+    configDb = database 'Config DB' {
+      technology 'PostgreSQL / KV'
+      description 'Runtime-конфигурации всех сервисов'
+    }
+
+    stq = queue 'STQ' {
+      technology 'Simple Task Queue'
+      description 'Очередь асинхронных событий для обновления рекомендаций'
+    }
+  }
+
+  buyer -> marketplace.web 'Покупки и заказы'
+  seller -> marketplace.web 'Управление товарами'
+
+  marketplace.web -> marketplace.gateway 'API calls' { technology 'gRPC-web/HTTPS' }
+  marketplace.gateway -> marketplace.users 'Auth/Profile' { technology 'gRPC' }
+  marketplace.gateway -> marketplace.catalog 'Catalog read/write' { technology 'gRPC' }
+  marketplace.gateway -> marketplace.feed 'Feed request' { technology 'gRPC' }
+  marketplace.gateway -> marketplace.orders 'Checkout/Orders' { technology 'gRPC' }
+  marketplace.orders -> marketplace.payments 'Payment initiation/status' { technology 'gRPC' }
+  marketplace.orders -> marketplace.users 'Get buyer/seller info' { technology 'gRPC' }
+
+  marketplace.feed -> marketplace.recommender 'GetRecommendations' { technology 'gRPC' }
+
+  marketplace.users -> marketplace.usersDb 'CRUD' { technology 'SQL' }
+  marketplace.catalog -> marketplace.catalogDb 'CRUD' { technology 'SQL' }
+  marketplace.orders -> marketplace.ordersDb 'CRUD' { technology 'SQL' }
+  marketplace.orders -> marketplace.ordersAnalyticsDb 'Write order logs' { technology 'SQL/Bulk' }
+  marketplace.payments -> marketplace.paymentsDb 'CRUD' { technology 'SQL' }
+  marketplace.notifications -> marketplace.notificationsDb 'CRUD' { technology 'SQL' }
+  marketplace.recommender -> marketplace.recommenderDb 'Read/Write recommendations' { technology 'SQL' }
+  marketplace.config -> marketplace.configDb 'CRUD' { technology 'SQL' }
+
+  marketplace.users -> marketplace.config 'Fetch runtime config' { technology 'gRPC' }
+  marketplace.catalog -> marketplace.config 'Fetch runtime config' { technology 'gRPC' }
+  marketplace.feed -> marketplace.config 'Fetch runtime config' { technology 'gRPC' }
+  marketplace.recommender -> marketplace.config 'Fetch runtime config' { technology 'gRPC' }
+  marketplace.orders -> marketplace.config 'Fetch runtime config' { technology 'gRPC' }
+  marketplace.payments -> marketplace.config 'Fetch runtime config' { technology 'gRPC' }
+  marketplace.notifications -> marketplace.config 'Fetch runtime config' { technology 'gRPC' }
+
+  marketplace.orders -[async]-> marketplace.stq 'OrderCreated/OrderStatusChanged' { technology 'publish' }
+  marketplace.feed -[async]-> marketplace.stq 'FeedShown/FeedClicked' { technology 'publish' }
+  marketplace.stq -> marketplace.recommender 'Process events in ML workers (ack required)' { technology 'gRPC' }
+
+  marketplace.orders -> marketplace.notifications 'Order notifications' { technology 'gRPC' }
+  marketplace.payments -> marketplace.notifications 'Payment notifications' { technology 'gRPC' }
+
+  marketplace.payments -> paymentProvider 'Charge/Refund' { technology 'HTTPS' }
+  marketplace.notifications -> msgProvider 'Send messages' { technology 'HTTPS' }
+}

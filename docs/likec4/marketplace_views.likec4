@@ -1,0 +1,30 @@
+views {
+  view landscape {
+    title 'Marketplace - System Landscape'
+    include *
+  }
+
+  view containers of marketplace {
+    title 'Marketplace - Containers'
+    include *
+    include buyer
+    include seller
+    include paymentProvider
+    include msgProvider
+  }
+
+  view feed_and_recommender of marketplace {
+    title 'Feed + Recommender + STQ'
+    include marketplace.feed
+    include marketplace.recommender
+    include marketplace.recommenderDb
+    include marketplace.stq
+    include marketplace.gateway
+    include marketplace.web
+  }
+
+  deployment view localDocker {
+    title 'Deployment - Local Docker'
+    include local.**
+  }
+}

@@ -1,0 +1,23 @@
+services:
+  payment-service:
+    build:
+      context: .
+      dockerfile: src/Dockerfile
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 2s
+      retries: 5
+
+  likec4:
+    image: likec4/likec4:latest
+    working_dir: /data
+    command: ["serve", "--listen", "0.0.0.0"]
+    volumes:
+      - ./docs/likec4:/data
+    ports:
+      - "5173:5173"
+
+      - "24678:24678"

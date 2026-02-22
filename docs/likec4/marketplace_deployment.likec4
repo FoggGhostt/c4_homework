@@ -1,0 +1,11 @@
+deployment {
+  environment local 'Local Docker' {
+    dockerEngine engine 'Docker Engine' {
+      dockerContainer gatewayService 'gateway-service' {
+        instanceOf marketplace.gateway
+      }
+
+      dockerContainer likec4Viewer 'likec4-viewer'
+    }
+  }
+}

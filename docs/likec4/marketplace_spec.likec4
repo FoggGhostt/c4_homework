@@ -1,0 +1,39 @@
+specification {
+  element actor {
+    style { shape person }
+  }
+
+  element system {
+    style { color secondary }
+  }
+
+  element container
+  element component
+
+  element database {
+    style { shape storage color green }
+  }
+
+  element storage {
+    style { shape storage color green }
+  }
+
+  element queue {
+    style { shape queue color amber }
+  }
+
+  element external {
+    style { color muted }
+  }
+
+  relationship async {
+    color red
+    line dotted
+  }
+
+  deploymentNode environment
+  deploymentNode zone
+  deploymentNode vm
+  deploymentNode dockerEngine
+  deploymentNode dockerContainer
+}
